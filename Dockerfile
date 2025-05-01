@@ -1,6 +1,6 @@
 FROM gcr.io/google.com/cloudsdktool/cloud-sdk:slim
 
-# Install Python and system dependencies
+# Install dependencies
 RUN apt-get update && \
     apt-get install -y python3 python3-pip python3-venv python3-tk curl && \
     pip3 install --upgrade pip --break-system-packages
@@ -12,18 +12,17 @@ RUN curl -sSL https://install.python-poetry.org | python3 - && \
 # Set working directory
 WORKDIR /app
 
-# Copy only pyproject files first to cache dependencies
+# Copy only dependency files first
 COPY pyproject.toml poetry.lock /app/
 
-# Configure Poetry to not use virtualenvs, then install dependencies
-RUN poetry config virtualenvs.create false && \
-    poetry install --no-interaction --no-ansi
+# Install dependencies (with Poetry-managed virtualenv)
+RUN poetry install --no-root --no-interaction --no-ansi
 
-# Copy the rest of the app
+# Copy full source after dependencies
 COPY . /app
 
-# Expose FastAPI port
+# Expose port
 EXPOSE 5005
 
-# Start the app
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "5005", "--workers", "4"]
+# Run using Poetry's venv path
+CMD ["poetry", "run", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "5005", "--workers", "4"]
