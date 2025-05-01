@@ -13,6 +13,7 @@ import app.core.config as config
 async def lifespan(app: FastAPI):
     
     logging.info("Starting application")
+    yield
     # command = ["gcloud", "auth", "activate-service-account", f"--key-file={config.GOOGLE_APPLICATION_CREDENTIALS}"]
     # process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     # stdout, stderr = process.communicate()
