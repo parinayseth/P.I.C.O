@@ -1,0 +1,29 @@
+#to be removed afterward and added to poetry
+
+# Base Application Dependencies
+fastapi==0.115.12
+gunicorn==23.0.0
+python-dotenv==1.1.0
+requests==2.32.3
+uvicorn==0.34.2
+
+# Langchain Core & Integrations (Upgraded to resolve conflicts)
+langchain-core==1.0.1
+langchain-anthropic==1.0.5
+langchain-community==0.2.1
+langchain-google-vertexai==1.0.3
+langchain-openai==0.1.14
+langchain-qdrant==0.3.3
+langgraph==0.1.0
+
+# Other Dependencies (Kept at previously installed versions)
+Bottleneck==1.4.2
+grpcio-status==1.72.0rc1 # Consider using a stable grpcio release if possible
+h2==4.2.0
+langdetect==1.0.9
+numexpr==2.10.2
+ormsgpack==1.9.1
+pyarrow==19.0.1
+validators==0.35.0
+xxhash==3.5.0
+
