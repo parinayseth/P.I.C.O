@@ -11,6 +11,7 @@ These agents are designed to be used with the medical agent orchestration system
 """
 
 import os
+os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "/Users/yashmangalik/Documents/my_projects/P.I.C.O/credentials.json"
 import json
 import logging
 from typing import Dict, List, Optional, Any, Union, Tuple
