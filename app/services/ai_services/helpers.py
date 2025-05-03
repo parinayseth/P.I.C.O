@@ -1,0 +1,169 @@
+import json
+import logging
+import pandas as pd
+
+import faiss
+from sentence_transformers import SentenceTransformer
+from app.db.helpers import store_qna_response
+from app.services.ai_services.gemini_services import gemini_call_flash_2
+from prompts.system_prompts import followup_qna, get_validation_prompt, patient_info
+
+
+logger = logging.getLogger(__name__)
+
+MAX_TRIES = 3
+async def get_followup_questions_ai(qna):
+    try:
+        questioning_prompt = followup_qna()
+        qna_string = ""
+        for question, answer in qna.items():
+            qna_string += f"'question': '{question}' \n 'Answer': '{answer}'\n"
+
+        
+        
+        text_list, status = await gemini_call_flash_2(system_prompt=questioning_prompt, user_prompt=qna_string, user_feedback=None, model_name="gemini-2.0-flash-001")
+        logger.info(f"Gemini response: {text_list}")
+        
+        formatted_list = await extract_response_from_delimeters(text_list, extraction_key="json")
+        if formatted_list is None:
+            logger.error("Failed to extract JSON response from Gemini API.")
+            return "Error extracting JSON response", 500
+        formatted_json = json.loads(formatted_list)
+        
+        logger.info(f"Formatted follow-up questions: {formatted_list}")
+        return formatted_json, 200
+
+    except Exception as e:
+        logger.error(f"An error occurred while processing the request: {e}")
+        return "Error processing the request", 500
+    
+    
+async def format_followup_qna_response(text_list):
+    try:
+        questions = []
+        for text in text_list:
+            if '$$$' in text:
+                parts = text.split('$$$')
+                if len(parts) > 1:
+                    questions_part = parts[1].strip()
+                    questions_list = questions_part.split('\n')
+                    for question in questions_list:
+                        question = question.strip()
+                        if question:
+                            questions.append(question)
+        return questions
+    except Exception as e:
+        logger.error(f"An error occurred while extracting questions: {e}")
+        return []
+    
+async def extract_response_from_delimeters(ai_response, extraction_key="response"):
+        """
+        Extract the response from the response string.
+        Parameters: ai_response (str): The response string.
+        Returns: response (str): The extracted response content.
+        """
+        json_code_start = f"```{extraction_key}"
+        json_code_end = "```"
+        start_index = ai_response.find(json_code_start) + len(json_code_start)
+        end_index = ai_response.find(json_code_end, start_index)
+
+        if start_index != -1 and end_index != -1:
+            json_response = ai_response[start_index:end_index].strip()
+            # print(f"Extracted JSON response: {json_response}")
+            return json_response
+        else:
+            return None
+        
+        
+async def get_patient_summary(user_id, qna, doc_summary, department_selected):
+    try:
+        data = {"qna": qna}
+        goal = await extract_and_format_qna(qna)
+        logger.info(f"Goal: {goal}")
+        # information = "Relevant documents from the Vector database including previous case studies and medical guidelines on hypertension and headaches"  # TODO: Adding Vector DB Function
+        about = "\n".join([f"Question: {question}\nAnswer: {answer}\n" for question, answer in qna.items()])
+        logger.info(f"About: {about}")
+        information = await query_answer([goal])
+        logger.info(f"Information: {information}")
+        
+        
+        system_prompt = patient_info()
+        user_prompt = f"\nGenerate a summary diagnosis based upon these {goal}, {about}, {doc_summary}, {information}"
+        ai_response = await gemini_call_flash_2(system_prompt=system_prompt, user_prompt=user_prompt, user_feedback=None, model_name="gemini-2.0-flash-001")
+        logger.info(f"AI Response: {ai_response}")
+
+        
+        validation_sytem_prompt = get_validation_prompt(ai_response, goal, about, doc_summary, information)
+        validation_result = await gemini_call_flash_2(system_prompt=validation_sytem_prompt, user_prompt=ai_response, user_feedback=None, model_name="gemini-2.0-flash-001")
+        logger.info(f"Validation Result: {validation_result}")
+        
+        confidence_score = await extract_confidence_score(validation_result)
+        logger.info(f"Confidence Score: {confidence_score}")
+
+        store_response, status_code = await store_qna_response(user_id, qna, ai_response, confidence_score, department_selected)
+        if status_code != 200:
+            logger.error(f"Failed to store QnA response: {store_response}")
+            return "Error storing QnA response", 500
+        
+        # ai_response = ""
+        return ai_response, store_response, 200
+
+    except Exception as e:
+        logger.error(f"An error occurred while processing AI response: {e}")
+        return "Error processing AI response", 500
+
+
+async def extract_confidence_score(validation_result):
+    try:
+        start = validation_result.find("$$$")
+        end = validation_result.find("$$$", start + 3)
+        if start != -1 and end != -1:
+            score = validation_result[start + 3:end]
+            return score.strip()
+        else:
+            raise ValueError("Confidence score delimiters not found in the validation result.")
+    except Exception as e:
+        logger.error(f"An error occurred while extracting the confidence score: {e}")
+        return "0"  # Return a default score or handle appropriately
+
+async def extract_and_format_qna(json_data):
+    try:
+        keys_to_include = [
+            "Purpose of Visit",
+            "What is your age and Sex?",
+            "What are your main symptoms and for how long you have been experiencing?",
+            "Are you currently taking any medications? If so, what are they?",
+            "Are there any hereditary conditions in your family?",
+            "Do you have any known allergies?"
+        ]
+        complete_string = ""
+        for key in keys_to_include:
+            complete_string += f"{key} : {json_data[key]} "
+        
+        return complete_string
+
+    except Exception as e:
+        print(f"An error occurred while extracting and formatting Q&A: {e}")
+        return [], ""
+    
+    
+faiss_output = "embeddings/KnowledgeBase.faiss"
+csv_output = "embeddings/MedMCQA_Combined_DF.csv"
+index_path = faiss_output
+index = faiss.read_index(index_path)
+Embeddingmodel = SentenceTransformer("hkunlp/instructor-xl")
+MedMCQA_Combined_DF = pd.read_csv(csv_output)
+index = faiss.read_index(index_path)
+
+async def query_answer(query):
+    try:
+        global Embeddingmodel, MedMCQA_Combined_DF
+
+        query_embedding = Embeddingmodel.encode(query)
+        top_k = 3
+        scores, index_vals = index.search(query_embedding, top_k)
+
+        return MedMCQA_Combined_DF['question_exp'].loc[list(index_vals[0])].to_list()
+    except Exception as e:
+        print(f"An error occurred while querying the answer: {e}")
+        return []

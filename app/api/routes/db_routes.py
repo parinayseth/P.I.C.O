@@ -71,30 +71,3 @@ async def store_docs(
     except Exception as e:
         return JSONResponse(content={'error': f'An unexpected error occurred: {e}'}, status_code=500)
     
-    
-    
-#     @app.route('/upload_docs', methods=["POST"])
-# def store_docs():
-#     try:
-#         if 'files' not in request.files:
-#             return jsonify({'error': 'No files provided'}), 400
-
-#         file = request.files['files']
-#         user_id = request.form['user_id']
-#         filename = f"{user_id}_{file.filename}"
-
-#         try:
-#             file.save(filename)
-#         except Exception as e:
-#             return jsonify({'error': f'Error saving file: {e}'}), 500
-
-#         response, status_code = database.upload_azure_blob(filename, user_id)
-
-#         if status_code == 200:
-#             os.remove(filename)
-#             return jsonify({'success': True, 'path_stored': response}), status_code
-#         else:
-#             return jsonify({'success': False, 'error': response}), status_code
-
-#     except Exception as e:
-#         return jsonify({'error': f'An unexpected error occurred: {e}'}), 500
