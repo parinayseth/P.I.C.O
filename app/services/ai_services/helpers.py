@@ -162,7 +162,7 @@ async def query_answer(query):
         logger.info(f"Querying with: {query}")
         logger.info(f"Embedding model: {resources.embedding_model}")
         
-        query_embeddings_without_reshape = resources.embedding_model.encode([query])
+        query_embeddings_without_reshape = resources.embedding_model.encode(query)
         logger.info(f"Query embeddings without reshape: {query_embeddings_without_reshape}")
         
         query_embedding_base = query_embeddings_without_reshape[0]
