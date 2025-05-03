@@ -16,6 +16,7 @@ logging.info(f"Starting application in {ENV} environment")
 GOOGLE_APPLICATION_CREDENTIALS = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
 BUCKET_NAME=os.getenv("BUCKET_NAME")
 BLOB_PATH=os.getenv("BLOB_PATH")
+LLM_PROJECT_ID=os.getenv("LLM_PROJECT_ID")
 
 class LogConfig(BaseSettings):
     LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
