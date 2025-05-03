@@ -9,33 +9,20 @@ This module implements a medical orchestration system that:
 The system uses LangGraph for workflow management and Pydantic for type validation.
 """
 import os
-
-# Ensure the path to your credentials file is correct
-os.environ[
-    "GOOGLE_APPLICATION_CREDENTIALS"] = "/Users/yashmangalik/Documents/my_projects/P.I.C.O/credentials.json"  # Commented out for general use
-
-import os
 import json
 import base64
 from typing import Dict, List, Optional, Any, Literal, Union
 from pydantic import BaseModel, Field
 from anthropic import AnthropicVertex
-from langchain_core.messages import HumanMessage, AIMessage, SystemMessage, BaseMessage
-from langchain_core.runnables import RunnablePassthrough
 from langgraph.graph import MessagesState, StateGraph, END
 from langgraph.checkpoint.memory import MemorySaver
-from dotenv import load_dotenv
-import re
-from PIL import Image
-import io
+from app.core.config import LLM_PROJECT_ID,LLM_REGION,LLM_MODEL,GOOGLE_APPLICATION_CREDENTIALS
 
-# Load environment variables
-load_dotenv()
-
+os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = GOOGLE_APPLICATION_CREDENTIALS
 # Initialize AnthropicVertex client
 model = AnthropicVertex(
-    project_id="lumbar-poc",
-    region="us-east5",
+    project_id=LLM_PROJECT_ID,
+    region=LLM_REGION,
 )
 
 # Memory for conversation state
@@ -53,13 +40,11 @@ class AgentDecision(BaseModel):
     reasoning: str = Field(..., description="Step-by-step reasoning for selecting this agent")
     confidence: float = Field(..., description="Confidence score between 0.0 and 1.0")
 
-
 class MediaContent(BaseModel):
     """Model for handling various types of media content."""
     type: str = Field(..., description="Type of media (image, text, etc.)")
     content: str = Field(..., description="Base64 encoded content or text content")
     metadata: Optional[Dict] = Field(default=None, description="Additional metadata about the content")
-
 
 class PatientState(MessagesState):
     """State maintained across the workflow for patient interactions."""
@@ -68,7 +53,6 @@ class PatientState(MessagesState):
     output: Optional[str] = Field(default=None, description="Final output to patient")
     confidence: float = Field(default=0.0, description="Confidence in the diagnosis decision")
     media_content: Optional[List[MediaContent]] = Field(default=None, description="Media files uploaded by patient")
-
 
 # ========== Agent Configuration ==========
 
@@ -465,7 +449,7 @@ def invoke_anthropic(prompt_text: str, image_data = None) -> str:
         ])
 
     response = model.messages.create(
-        model="claude-3-5-sonnet@20240620",
+        model=LLM_MODEL,
         max_tokens=8192,
         temperature=0,
         messages=messages,
@@ -492,9 +476,7 @@ def extract_image_description(image_data: str) -> str:
     except Exception as e:
         return f"Error analyzing image: {str(e)}"
 
-
 # ========== Specialist Tool Functions ==========
-
 def cardiologist_tool(query, image=None):
     # Simulate specialist logic (replace with real model call as needed)
     return f"[Cardiologist] Analysis for: {query} (Image: {'Yes' if image else 'No'})"
@@ -704,7 +686,7 @@ def multi_tool_orchestration_agent(query: str, media_files: list = None) -> str:
     # Tool calling loop
     while tool_use_count < max_tool_calls:
         response = model.messages.create(
-            model="claude-3-5-sonnet@20240620",
+            model=LLM_MODEL,
             system=MULTI_TOOL_SYSTEM_PROMPT,
             max_tokens=8192,
             temperature=0,
@@ -794,7 +776,7 @@ def multi_tool_orchestration_agent(query: str, media_files: list = None) -> str:
 
                 # Get final synthesized response
                 final_response = model.messages.create(
-                    model="claude-3-5-sonnet@20240620",
+                    model=LLM_MODEL,
                     max_tokens=8192,
                     temperature=0,
                     messages=messages,
@@ -813,7 +795,7 @@ def multi_tool_orchestration_agent(query: str, media_files: list = None) -> str:
         })
 
         final_response = model.messages.create(
-            model="claude-3-5-sonnet@20240620",
+            model=LLM_MODEL,
             max_tokens=8192,
             temperature=0,
             messages=messages,
@@ -824,13 +806,22 @@ def multi_tool_orchestration_agent(query: str, media_files: list = None) -> str:
 
     return "Unable to complete analysis due to system limitations. Please try again or consult with a healthcare provider directly."
 
+def analyze_mri_with_query(query: str, image_data) -> str:
+    """
+    Analyze an MRI image with a given query using the multi-tool orchestration agent.
 
-# ========== Example usage ==========
-if __name__ == "__main__":
-    import os
-    img_path = os.path.join(os.path.dirname(__file__), "img.png")
-    with open(img_path, "rb") as img_file:
-        img_base64 = base64.b64encode(img_file.read()).decode("utf-8")
+    Args:
+        query (str): The patient's query or description of symptoms.
+        image_data (IO): The image file sent via an API as an IO buffer.
+
+    Returns:
+        str: The response from the multi-tool orchestration agent.
+    """
+
+    # Read and encode the image from the IO buffer
+    img_base64 = base64.b64encode(image_data.read()).decode("utf-8")
+
+    # Prepare the image data
     mri_example = [
         {
             "type": "image",
@@ -842,8 +833,30 @@ if __name__ == "__main__":
         }
     ]
 
-    response_with_mri = multi_tool_orchestration_agent(
-        "I've been experiencing chest pain and shortness of breath when exercising. Can you analyze this heart MRI?",
-        mri_example
-    )
-    print("Response with MRI:", response_with_mri)
+    # Call the multi-tool orchestration agent
+    response = multi_tool_orchestration_agent(query, mri_example)
+    return response
+
+
+# ========== Example usage ==========
+# if __name__ == "__main__":
+#     import os
+#     img_path = os.path.join(os.path.dirname(__file__), "img.png")
+#     with open(img_path, "rb") as img_file:
+#         img_base64 = base64.b64encode(img_file.read()).decode("utf-8")
+#     mri_example = [
+#         {
+#             "type": "image",
+#             "content": img_base64,
+#             "metadata": {
+#                 "description": "Cardiac MRI",
+#                 "format": "png"
+#             }
+#         }
+#     ]
+#
+#     response_with_mri = multi_tool_orchestration_agent(
+#         "I've been experiencing chest pain and shortness of breath when exercising. Can you analyze this heart MRI?",
+#         mri_example
+#     )
+#     print("Response with MRI:", response_with_mri)

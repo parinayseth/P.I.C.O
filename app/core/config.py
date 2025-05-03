@@ -18,6 +18,9 @@ BUCKET_NAME=os.getenv("BUCKET_NAME")
 BLOB_PATH=os.getenv("BLOB_PATH")
 LLM_PROJECT_ID=os.getenv("LLM_PROJECT_ID")
 
+LLM_REGION=os.getenv("LLM_REGION")
+LLM_MODEL= "claude-3-5-sonnet@20240620"
+
 class LogConfig(BaseSettings):
     LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
     LOG_FILE: str = os.getenv("LOG_FILE", "logs/app.log")
