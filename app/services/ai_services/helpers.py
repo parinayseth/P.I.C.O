@@ -183,7 +183,6 @@ async def hyde_query_answer(query):
         list: Retrieved documents from the knowledge base
     """
     try:
-        global Embeddingmodel, MedMCQA_Combined_DF, index
         
         # Step 1: Generate a hypothetical document using Gemini
         system_prompt = """You are a medical professional tasked with creating a detailed response that would answer the following medical query. 
@@ -208,14 +207,14 @@ async def hyde_query_answer(query):
             return await query_answer(query)
         
         # Step 2: Embed the hypothetical document instead of the original query
-        hypothetical_embedding = Embeddingmodel.encode([hypothetical_doc])
+        hypothetical_embedding = embedding_model.encode([hypothetical_doc])
         
         # Step 3: Retrieve relevant documents using the hypothetical embedding
         top_k = 5 
-        scores, index_vals = index.search(hypothetical_embedding, top_k)
+        scores, index_vals = faiss_index.search(hypothetical_embedding, top_k)
         
         # Step 4: Filter results to return most relevant
-        retrieved_docs = MedMCQA_Combined_DF['question_exp'].loc[list(index_vals[0])].to_list()
+        retrieved_docs = med_mcqa_df['question_exp'].loc[list(index_vals[0])].to_list()
         
         logger.info(f"HyDE RAG retrieved {len(retrieved_docs)} documents")
         
