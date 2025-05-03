@@ -4,10 +4,11 @@ import logging
 import os
 import time
 from typing import List
-from fastapi import FastAPI, APIRouter, HTTPException, Form, File, UploadFile, Request, WebSocket, WebSocketDisconnect, BackgroundTasks
+from fastapi import Depends, FastAPI, APIRouter, HTTPException, Form, File, UploadFile, Request, WebSocket, WebSocketDisconnect, BackgroundTasks
 from fastapi.responses import JSONResponse
-
+from motor.motor_asyncio import AsyncIOMotorCollection, AsyncIOMotorDatabase
 from app.db.helpers import download_documents, extract_text_from_pdf
+from app.db.utils import get_collection
 from app.services.ai_services.helpers import get_followup_questions_ai, get_patient_summary
 
 
@@ -60,7 +61,9 @@ async def get_followup_questions(request: Request):
 
 
 @router.post("/get_summary", response_model=dict)
-async def get_summary(request: Request):
+async def get_summary(request: Request, 
+                          db_collection: AsyncIOMotorCollection = Depends(get_collection("patient_data")),
+):
     """
     Endpoint to get a summary based on user input and uploaded document.
     """
@@ -86,7 +89,7 @@ async def get_summary(request: Request):
             pdf_text = ""
 
         try:
-            ai_response, visit_id, status_code = await get_patient_summary(user_id, qna, pdf_text, department_selected)
+            ai_response, visit_id, status_code = await get_patient_summary(user_id, qna, pdf_text, department_selected, db_collection)
             if status_code == 200:
                 return JSONResponse(content={'success': True, 'analysis': ai_response, 'visit_id': visit_id }, status_code=status_code)
             else:

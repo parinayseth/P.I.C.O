@@ -81,7 +81,7 @@ async def extract_text_from_pdf(file_path):
         return "", 500
     
     
-async def store_qna_response(user_id, qna, ai_response, validation_score, department_selected):
+async def store_qna_response(user_id, qna, ai_response, validation_score, department_selected, db_collection):
     try:
         # Create the document to update
         appointment_data = {
@@ -97,9 +97,8 @@ async def store_qna_response(user_id, qna, ai_response, validation_score, depart
             "visit_id": visit_id,
         }
 
-        collection = get_collection("patient_data")
 
-        result = await collection.update_one(
+        result = await db_collection.update_one(
             {"user_id": user_id},
             {"$push": {"appointments": appointment}},
             upsert=True
