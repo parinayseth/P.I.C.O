@@ -167,3 +167,122 @@ async def query_answer(query):
     except Exception as e:
         logger.error(f"An error occurred while querying the answer: {e}")
         return []
+    
+async def hyde_query_answer(query):
+    """
+    Implements the Hypothetical Document Embeddings (HyDE) RAG approach.
+    This method:
+    1. Generates a hypothetical document that would answer the query
+    2. Uses that synthetic document for embedding and retrieval instead of the original query
+    3. Returns the retrieved documents
+    
+    Args:
+        query (list): List containing the user query
+    
+    Returns:
+        list: Retrieved documents from the knowledge base
+    """
+    try:
+        global Embeddingmodel, MedMCQA_Combined_DF, index
+        
+        # Step 1: Generate a hypothetical document using Gemini
+        system_prompt = """You are a medical professional tasked with creating a detailed response that would answer the following medical query. 
+        Create a comprehensive and informative response that covers the key medical aspects of this query.
+        Focus on providing factual information that would be useful for retrieval from a medical knowledge base.
+        Keep your response focused and relevant to the query."""
+        
+        user_prompt = query[0] if isinstance(query, list) else query
+        
+        hypothetical_doc, status = await gemini_call_flash_2(
+            system_prompt=system_prompt, 
+            user_prompt=user_prompt, 
+            user_feedback=None, 
+            model_name="gemini-2.0-flash-001",
+            temp = 0.7
+            )
+        
+        logger.info(f"Generated hypothetical document: {hypothetical_doc}")
+        
+        if status != 200 or not hypothetical_doc:
+            logger.warning("Failed to generate hypothetical document, falling back to original query")
+            return await query_answer(query)
+        
+        # Step 2: Embed the hypothetical document instead of the original query
+        hypothetical_embedding = Embeddingmodel.encode([hypothetical_doc])
+        
+        # Step 3: Retrieve relevant documents using the hypothetical embedding
+        top_k = 5 
+        scores, index_vals = index.search(hypothetical_embedding, top_k)
+        
+        # Step 4: Filter results to return most relevant
+        retrieved_docs = MedMCQA_Combined_DF['question_exp'].loc[list(index_vals[0])].to_list()
+        
+        logger.info(f"HyDE RAG retrieved {len(retrieved_docs)} documents")
+        
+        return retrieved_docs[:3]  # Return top 3 to maintain consistency with original query_answer
+    
+    except Exception as e:
+        logger.error(f"An error occurred in hyde_query_answer: {e}")
+        logger.info("Falling back to standard query_answer method")
+        return await query_answer(query)
+
+# Updated get_patient_summary function that uses hyde_query_answer
+async def get_patient_summary_with_hyde(user_id, qna, doc_summary, department_selected, db_collection, use_hyde=True):
+    try:
+        data = {"qna": qna}
+        goal = await extract_and_format_qna(qna)
+        logger.info(f"Goal: {goal}")
+        
+        about = "\n".join([f"Question: {question}\nAnswer: {answer}\n" for question, answer in qna.items()])
+        logger.info(f"About: {about}")
+        
+        # Use Hyde RAG or standard RAG based on the parameter
+        if use_hyde:
+            information = await hyde_query_answer([goal])
+            logger.info(f"Hyde RAG Information: {information}")
+        else:
+            information = await query_answer([goal])
+            logger.info(f"Standard RAG Information: {information}")
+        
+        system_prompt = patient_info()
+        user_prompt = f"\nGenerate a summary diagnosis based upon these {goal}, {about}, {doc_summary}, {information}"
+        ai_response, status = await gemini_call_flash_2(
+            system_prompt=system_prompt, 
+            user_prompt=user_prompt, 
+            user_feedback=None, 
+            model_name="gemini-2.0-flash-001"
+        )
+        logger.info(f"AI Response: {ai_response}")
+
+        validation_system_prompt = get_validation_prompt(ai_response, goal, about, doc_summary, information)
+        validation_result, status = await gemini_call_flash_2(
+            system_prompt=validation_system_prompt, 
+            user_prompt=ai_response, 
+            user_feedback=None, 
+            model_name="gemini-2.0-flash-001"
+        )
+        logger.info(f"Validation Result: {validation_result}")
+        
+        confidence_score = await extract_confidence_score(validation_result)
+        logger.info(f"Confidence Score: {confidence_score}")
+
+        store_response, status_code = await store_qna_response(
+            user_id, 
+            qna, 
+            ai_response, 
+            confidence_score, 
+            department_selected, 
+            db_collection,
+            retrieval_method="hyde_rag" if use_hyde else "standard_rag"  # Store which method was used
+        )
+        
+        if status_code != 200:
+            logger.error(f"Failed to store QnA response: {store_response}")
+            return "Error storing QnA response", 500
+        
+        return ai_response, store_response, 200
+
+    except Exception as e:
+        logger.error(f"An error occurred while processing AI response: {e}")
+        return "Error processing AI response", 500
+    

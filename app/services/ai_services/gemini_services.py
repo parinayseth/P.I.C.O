@@ -20,6 +20,7 @@ async def gemini_call_flash_2(
     initial_wait: float = 1.0,
     max_wait: float = 60.0,
     response_schema = None,
+    temp = 0.1,
 ):
     """
     Simplified function to call Gemini 2.0 Flash API.
@@ -54,10 +55,8 @@ async def gemini_call_flash_2(
             response = model.generate_content(
                 content,
                 generation_config=GenerationConfig(
-                    temperature=0.1,
+                    temperature=temp,
                     max_output_tokens=8100,
-                    top_k= 1,
-                    top_p= 1,
                     # response_mime_type="application/json",  Uncomment for Strucutred 
                     # response_schema=response_schema,
                 ),
