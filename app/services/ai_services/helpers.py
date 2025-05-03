@@ -7,6 +7,7 @@ from sentence_transformers import SentenceTransformer
 from app.db.helpers import store_qna_response
 from app.services.ai_services.gemini_services import gemini_call_flash_2
 from prompts.system_prompts import followup_qna, get_validation_prompt, patient_info
+from app.services.ai_services.resources import faiss_index, embedding_model, med_mcqa_df
 
 
 logger = logging.getLogger(__name__)
@@ -147,23 +148,22 @@ async def extract_and_format_qna(json_data):
         return [], ""
     
     
-faiss_output = "embeddings/KnowledgeBase.faiss"
-csv_output = "embeddings/MedMCQA_Combined_DF.csv"
-index_path = faiss_output
-index = faiss.read_index(index_path)
-Embeddingmodel = SentenceTransformer("hkunlp/instructor-xl")
-MedMCQA_Combined_DF = pd.read_csv(csv_output)
-index = faiss.read_index(index_path)
+# faiss_output = "embeddings/KnowledgeBase.faiss"
+# csv_output = "embeddings/MedMCQA_Combined_DF.csv"
+# index_path = faiss_output
+# index = faiss.read_index(index_path)
+# Embeddingmodel = SentenceTransformer("hkunlp/instructor-xl")
+# MedMCQA_Combined_DF = pd.read_csv(csv_output)
+# index = faiss.read_index(index_path)
 
 async def query_answer(query):
     try:
-        global Embeddingmodel, MedMCQA_Combined_DF
-
-        query_embedding = Embeddingmodel.encode(query)
+        # Use the globally loaded resources
+        query_embedding = embedding_model.encode([query])[0].reshape(1, -1)
         top_k = 3
-        scores, index_vals = index.search(query_embedding, top_k)
-
-        return MedMCQA_Combined_DF['question_exp'].loc[list(index_vals[0])].to_list()
+        scores, index_vals = faiss_index.search(query_embedding, top_k)
+        
+        return med_mcqa_df['question_exp'].loc[list(index_vals[0])].to_list()
     except Exception as e:
-        print(f"An error occurred while querying the answer: {e}")
+        logger.error(f"An error occurred while querying the answer: {e}")
         return []
