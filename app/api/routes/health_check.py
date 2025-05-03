@@ -1,32 +1,47 @@
-import asyncio
-import datetime
+from fastapi import APIRouter, Depends
+from app.db.session import mongodb
 import logging
-import os
+from typing import Dict, Any
+from pymongo.errors import ConnectionFailure
 import time
-from typing import List
-from fastapi import FastAPI, APIRouter, HTTPException, Form, File, UploadFile, Request, WebSocket, WebSocketDisconnect, BackgroundTasks
-from fastapi.responses import JSONResponse
 
+logger = logging.getLogger(__name__)
+router = APIRouter(tags=["health"], prefix="/health_check")
 
-
-###### LOGGING SETUP ######
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-logging.basicConfig(level=logging.ERROR, format='%(asctime)s - %(levelname)s - %(message)s')
-logging.basicConfig(level=logging.WARNING, format='%(asctime)s - %(levelname)s - %(message)s')
-####### END OF LOGGING SETUP ######
-
-
-
-####### API ROUTER SETUP #######
-router = APIRouter(prefix="/health_check")
-
-@router.get("/", response_model=dict)
-async def healthcheck():
+@router.get("/health")
+async def health_check() -> Dict[str, Any]:
     """
-    Health check endpoint to verify if the API is running.
+    Health check endpoint to verify API and database status
     """
-    return JSONResponse(
-        content={"status": "backend is running", "timestamp": datetime.datetime.utcnow().isoformat()},
-        status_code=200
-    )
+    result = {
+        "status": "healthy",
+        "timestamp": time.time(),
+        "components": {
+            "api": {"status": "up"},
+            "database": {"status": "unknown"}
+        }
+    }
     
+    # Check database connection
+    try:
+        # Execute a simple command to check the database connection
+        client = mongodb.client
+        if client:
+            await client.admin.command("ping")
+            result["components"]["database"]["status"] = "up"
+            logger.debug("Database health check: Connection successful")
+        else:
+            result["components"]["database"]["status"] = "down"
+            result["status"] = "degraded"
+            logger.warning("Database health check: No connection")
+    except ConnectionFailure:
+        result["components"]["database"]["status"] = "down"
+        result["status"] = "degraded"
+        logger.error("Database health check: Connection failed")
+    except Exception as e:
+        result["components"]["database"]["status"] = "error"
+        result["status"] = "degraded"
+        result["components"]["database"]["error"] = str(e)
+        logger.exception(f"Database health check: Unexpected error: {str(e)}")
+    
+    return result
