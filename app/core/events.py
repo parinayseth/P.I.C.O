@@ -41,6 +41,7 @@ async def lifespan(app: FastAPI):
         # Load into the imported resources module
         resources.faiss_index = faiss.read_index(faiss_output)
         resources.embedding_model = SentenceTransformer("hkunlp/instructor-xl")
+        logger.info(f"Embedding model loaded: {resources.embedding_model}")
         resources.med_mcqa_df = pd.read_csv(csv_output)
         
         logger.info("Successfully loaded all resources")
