@@ -75,7 +75,7 @@ async def extract_response_from_delimeters(ai_response, extraction_key="response
             return None
         
         
-async def get_patient_summary(user_id, qna, doc_summary, department_selected):
+async def get_patient_summary(user_id, qna, doc_summary, department_selected,db_collection):
     try:
         data = {"qna": qna}
         goal = await extract_and_format_qna(qna)
@@ -100,7 +100,7 @@ async def get_patient_summary(user_id, qna, doc_summary, department_selected):
         confidence_score = await extract_confidence_score(validation_result)
         logger.info(f"Confidence Score: {confidence_score}")
 
-        store_response, status_code = await store_qna_response(user_id, qna, ai_response, confidence_score, department_selected)
+        store_response, status_code = await store_qna_response(user_id, qna, ai_response, confidence_score, department_selected, db_collection)
         if status_code != 200:
             logger.error(f"Failed to store QnA response: {store_response}")
             return "Error storing QnA response", 500
