@@ -159,7 +159,18 @@ async def extract_and_format_qna(json_data):
 async def query_answer(query):
     try:
         # Use the globally loaded resources
-        query_embedding = embedding_model.encode([query])[0].reshape(1, -1)
+        logger.info(f"Querying with: {query}")
+        logger.info(f"Embedding model: {embedding_model}")
+        
+        query_embeddings_without_reshape = embedding_model.encode([query])
+        logger.info(f"Query embeddings without reshape: {query_embeddings_without_reshape}")
+        
+        query_embedding_base = query_embeddings_without_reshape[0]
+        logger.info(f"Query embedding base: {query_embedding_base}")
+        
+        query_embedding = query_embedding_base.reshape(1, -1)
+        logger.info(f"Query embedding reshaped: {query_embedding}")
+        # query_embedding = embedding_model.encode([query])[0].reshape(1, -1)
         top_k = 3
         scores, index_vals = faiss_index.search(query_embedding, top_k)
         
