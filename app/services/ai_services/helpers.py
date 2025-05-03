@@ -7,7 +7,7 @@ from sentence_transformers import SentenceTransformer
 from app.db.helpers import store_qna_response
 from app.services.ai_services.gemini_services import gemini_call_flash_2
 from prompts.system_prompts import followup_qna, get_validation_prompt, patient_info
-from app.services.ai_services.resources import faiss_index, embedding_model, med_mcqa_df
+from app.services.ai_services import resources
 
 
 logger = logging.getLogger(__name__)
@@ -160,9 +160,9 @@ async def query_answer(query):
     try:
         # Use the globally loaded resources
         logger.info(f"Querying with: {query}")
-        logger.info(f"Embedding model: {embedding_model}")
+        logger.info(f"Embedding model: {resources.embedding_model}")
         
-        query_embeddings_without_reshape = embedding_model.encode([query])
+        query_embeddings_without_reshape = resources.embedding_model.encode([query])
         logger.info(f"Query embeddings without reshape: {query_embeddings_without_reshape}")
         
         query_embedding_base = query_embeddings_without_reshape[0]
@@ -172,9 +172,9 @@ async def query_answer(query):
         logger.info(f"Query embedding reshaped: {query_embedding}")
         # query_embedding = embedding_model.encode([query])[0].reshape(1, -1)
         top_k = 3
-        scores, index_vals = faiss_index.search(query_embedding, top_k)
+        scores, index_vals = resources.faiss_index.search(query_embedding, top_k)
         
-        return med_mcqa_df['question_exp'].loc[list(index_vals[0])].to_list()
+        return resources.med_mcqa_df['question_exp'].loc[list(index_vals[0])].to_list()
     except Exception as e:
         logger.error(f"An error occurred while querying the answer: {e}")
         return []
@@ -218,14 +218,14 @@ async def hyde_query_answer(query):
             return await query_answer(query)
         
         # Step 2: Embed the hypothetical document instead of the original query
-        hypothetical_embedding = embedding_model.encode([hypothetical_doc])
+        hypothetical_embedding = resources.embedding_model.encode([hypothetical_doc])
         
         # Step 3: Retrieve relevant documents using the hypothetical embedding
         top_k = 5 
-        scores, index_vals = faiss_index.search(hypothetical_embedding, top_k)
+        scores, index_vals = resources.faiss_index.search(hypothetical_embedding, top_k)
         
         # Step 4: Filter results to return most relevant
-        retrieved_docs = med_mcqa_df['question_exp'].loc[list(index_vals[0])].to_list()
+        retrieved_docs = resources.med_mcqa_df['question_exp'].loc[list(index_vals[0])].to_list()
         
         logger.info(f"HyDE RAG retrieved {len(retrieved_docs)} documents")
         
