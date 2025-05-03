@@ -89,12 +89,12 @@ async def get_patient_summary(user_id, qna, doc_summary, department_selected):
         
         system_prompt = patient_info()
         user_prompt = f"\nGenerate a summary diagnosis based upon these {goal}, {about}, {doc_summary}, {information}"
-        ai_response = await gemini_call_flash_2(system_prompt=system_prompt, user_prompt=user_prompt, user_feedback=None, model_name="gemini-2.0-flash-001")
+        ai_response, status = await gemini_call_flash_2(system_prompt=system_prompt, user_prompt=user_prompt, user_feedback=None, model_name="gemini-2.0-flash-001")
         logger.info(f"AI Response: {ai_response}")
 
         
         validation_sytem_prompt = get_validation_prompt(ai_response, goal, about, doc_summary, information)
-        validation_result = await gemini_call_flash_2(system_prompt=validation_sytem_prompt, user_prompt=ai_response, user_feedback=None, model_name="gemini-2.0-flash-001")
+        validation_result, status = await gemini_call_flash_2(system_prompt=validation_sytem_prompt, user_prompt=ai_response, user_feedback=None, model_name="gemini-2.0-flash-001")
         logger.info(f"Validation Result: {validation_result}")
         
         confidence_score = await extract_confidence_score(validation_result)
