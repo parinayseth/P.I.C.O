@@ -1,12 +1,14 @@
+import datetime
 import json
 import logging
 import pandas as pd
 
 import faiss
+import pytz
 from sentence_transformers import SentenceTransformer
 from app.db.helpers import store_qna_response
 from app.services.ai_services.gemini_services import gemini_call_flash_2
-from prompts.system_prompts import followup_qna, get_validation_prompt, patient_info
+from prompts.system_prompts import followup_qna, get_validation_prompt, mapping_prompt, patient_info
 from app.services.ai_services import resources
 
 
@@ -296,3 +298,54 @@ async def get_patient_summary_with_hyde(user_id, qna, doc_summary, department_se
         print(f"An error occurred while querying the answer: {e}")
         return []
     
+    
+async def doctor_mapping(dept, AGE, about_patient, available_doctors):
+    """
+    Implements the Doctor Mapping system.
+    This method:
+    1. Takes in patient details and available doctors
+    2. Maps the most suitable doctor to the patient based on the given information
+    3. Returns the recommended doctor's information in JSON format
+    
+    Args:
+        dept (str): Department of the patient
+        AGE (int): Age of the patient
+        about_patient (str): Symptoms of the patient
+        available_doctors (list): List of available doctors
+    
+    Returns:
+        dict: Recommended doctor's information in JSON format
+    """
+    try:
+        today = datetime.date.today()
+        day_of_week = today.strftime("%A")
+        utc_time = datetime.datetime.utcnow()
+        india_time_zone = pytz.timezone('Asia/Kolkata')
+        local_time = utc_time.astimezone(india_time_zone)
+        currtime = local_time.strftime("%I:%M %p")
+        docs = ""
+        for doctor in available_doctors:
+            docs += f"user_id: {doctor['user_id']}, Designation: {doctor['department']}, working_days: {doctor['working_days']} appointments_bookend: {doctor['appointments']}" + "\n"
+            
+
+        for doctor in available_doctors:
+            docs += f"user_id: {doctor['user_id']}, Designation: {doctor['department']}, working_days: {doctor['working_days']} appointments_bookend: {doctor['appointments']}" + "\n"
+            
+        system_mapping_prompt = mapping_prompt(dept, docs, AGE, about_patient, currtime, day_of_week)
+        
+        combined = f"\nMap an OPD session for this {dept}, {AGE}, {about_patient}, \n{docs}"
+
+        ai_response, status = await gemini_call_flash_2(system_prompt=system_mapping_prompt, user_prompt=combined, user_feedback=None, model_name="gemini-2.0-flash-001")
+        
+        extracted_response = await extract_response_from_delimeters(ai_response, extraction_key="json")
+        if extracted_response is None:
+            logger.error("Failed to extract JSON response from Gemini API.")
+            return "Error extracting JSON response", 500
+        
+        extracted_json = json.loads(extracted_response)
+        logger.info(f"Formatted doctor mapping response: {extracted_json}")
+        return extracted_json, 200
+
+    except Exception as e:
+        logger.error(f"An error occurred while processing the doctor mapping: {e}")
+        return {"error": "Error processing the doctor mapping"}, 500
