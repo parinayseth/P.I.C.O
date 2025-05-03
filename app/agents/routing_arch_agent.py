@@ -28,7 +28,8 @@ from dotenv import load_dotenv
 import re
 from PIL import Image
 import io
-
+from rich import print
+from app.services.ai_services.helpers import hyde_query_answer
 # Load environment variables
 load_dotenv()
 
@@ -226,10 +227,11 @@ def parse_anthropic_response(raw_response: str) -> AgentDecision:
         )
 
 
-def invoke_anthropic(prompt_text: str) -> str:
+def invoke_anthropic(prompt_text: str,system_prompt:str="") -> str:
     """Invoke the Anthropic model with a prompt."""
     response = model.messages.create(
         model="claude-3-5-sonnet@20240620",
+        system=system_prompt,
         max_tokens=8192,
         temperature=0,
         messages=[{"role": "user", "content": prompt_text}],
@@ -304,8 +306,7 @@ def create_agent_graph():
 
         # Combine everything for the decision input
         decision_input = f"""
-        {MedicalAgentConfig.DECISION_SYSTEM_PROMPT}
-
+        
         Patient query: {input_text}
 
         Recent conversation context:
@@ -318,7 +319,7 @@ def create_agent_graph():
         """
 
         # Make the decision
-        decision_response = invoke_anthropic(decision_input)
+        decision_response = invoke_anthropic(decision_input,MedicalAgentConfig.DECISION_SYSTEM_PROMPT)
         decision = parse_anthropic_response(decision_response)
 
         print(f"Decision: {decision.agent} with confidence {decision.confidence}")
@@ -373,7 +374,6 @@ def create_agent_graph():
 
         # Combine everything for the physician prompt
         physician_prompt = f"""
-        {MedicalAgentConfig.GENERAL_PHYSICIAN_PROMPT}
 
         Patient query: {input_text}
 
@@ -386,7 +386,7 @@ def create_agent_graph():
         Please provide appropriate medical guidance to the patient's query.
         """
 
-        response = invoke_anthropic(physician_prompt)
+        response = invoke_anthropic(physician_prompt,MedicalAgentConfig.GENERAL_PHYSICIAN_PROMPT)
 
         return {
             **state,
@@ -428,8 +428,6 @@ def create_agent_graph():
 
         # Combine everything for the cardiologist prompt
         cardiologist_prompt = f"""
-        {MedicalAgentConfig.CARDIOLOGIST_PROMPT}
-
         Patient query: {input_text}
 
         Recent conversation context:
@@ -441,7 +439,7 @@ def create_agent_graph():
         Please provide cardiac assessment and guidance based on the information provided.
         """
 
-        response = invoke_anthropic(cardiologist_prompt)
+        response = invoke_anthropic(cardiologist_prompt,MedicalAgentConfig.CARDIOLOGIST_PROMPT)
 
         return {
             **state,
@@ -485,8 +483,6 @@ def create_agent_graph():
 
         # Combine everything for the pathologist prompt
         pathologist_prompt = f"""
-        {MedicalAgentConfig.PATHOLOGIST_PROMPT}
-
         Patient query: {input_text}
 
         Recent conversation context:
@@ -498,7 +494,7 @@ def create_agent_graph():
         Please provide lab interpretation and guidance based on the reports.
         """
 
-        response = invoke_anthropic(pathologist_prompt)
+        response = invoke_anthropic(pathologist_prompt,MedicalAgentConfig.PATHOLOGIST_PROMPT)
 
         return {
             **state,
@@ -652,43 +648,92 @@ def process_image(image_data: str) -> Dict:
 
 # Example usage
 if __name__ == "__main__":
-    # Test the system with a sample patient query
+    # # Test the system with a sample patient query
+    # response = process_patient_query(
+    #     "I've been experiencing chest pain and shortness of breath when exercising. I'm worried about my heart."
+    # )
+    # print(f"Medical Response: {response}")
+    #
+    # # Example with a simulated uploaded cardiac MRI
+    # mri_example = [
+    #     {
+    #         "type": "image",
+    #         "content": "base64_encoded_image_would_be_here",
+    #         "metadata": {
+    #             "description": "Cardiac MRI",
+    #             "format": "jpeg"
+    #         }
+    #     }
+    # ]
+    #
+    # response_with_mri = process_patient_query(
+    #     "Can you analyze this heart MRI and tell me if there are any issues?",
+    #     media_files=mri_example
+    # )
+    # print(f"Cardiologist Response: {response_with_mri}")
+    #
+    # # Example with a simulated uploaded blood report
+    # blood_report_example = [
+    #     {
+    #         "type": "text",
+    #         "content": "CBC Results: WBC: 7.2, RBC: 4.8, Hemoglobin: 14.2, Hematocrit: 42%, Platelets: 250\nChemistry: Sodium: 140, Potassium: 4.2, Chloride: 102, CO2: 24, BUN: 15, Creatinine: 0.9, Glucose: 95",
+    #         "metadata": {
+    #             "description": "Blood work results from lab"
+    #         }
+    #     }
+    # ]
+    #
+    # response_with_bloodwork = process_patient_query(
+    #     "Can you explain what these blood test results mean?",
+    #     media_files=blood_report_example
+    # )
+    # print(f"Pathologist Response: {response_with_bloodwork}")
+
+
+    text = """**Patient Info**: 48-year-old Indian male, software professional, mostly sedentary lifestyle. Comes in complaining of fatigue and some general discomfort.
+
+---
+**Patient Questionaire**:
+
+1. **Doctor**: "Can you describe what brings you in today?"
+   **Patient**: "I've been feeling unusually tired lately. Even after a full night's sleep, I still feel drained. It's been like this for a few weeks now."
+
+2. **Doctor**: "Have you noticed any changes in your energy levels over the past few weeks or months?"
+   **Patient**: "Yes, definitely. I used to take evening walks, but now I feel winded even halfway through. I thought maybe it's just work stress."
+
+3. **Doctor**: "Are you currently experiencing or have you recently experienced any chest discomfort, heaviness, or pressure?"
+   **Patient**: "Not really pain, but there's this tightness in my chest sometimes, especially when I'm rushing or walking uphill."
+
+4. **Doctor**: "Do you feel short of breath during routine activities, like climbing stairs or walking short distances?"
+   **Patient**: "Yes, actually. Just last week, I had to stop halfway up one flight of stairs to catch my breath. That's never happened before."
+
+5. **Doctor**: "Have you ever felt your heart racing, skipping a beat, or pounding without clear reason?"
+   **Patient**: "A couple of times recently, my heart suddenly started pounding while I was sitting at my desk. It went away after a few minutes."
+
+6. **Doctor**: "Do you have any swelling in your ankles, feet, or legs, especially toward the end of the day?"
+   **Patient**: "Now that you mention it, yes. My socks sometimes leave marks, and my feet feel puffy in the evenings."
+
+7. **Doctor**: "Do you have a family history of heart disease, high blood pressure, or strokes?"
+   **Patient**: "Yes. My dad had a heart attack at 52, and my older brother is on medication for high blood pressure."
+
+8. **Doctor**: "Do you smoke, drink alcohol, or have a high-salt or high-fat diet?"
+   **Patient**: "I don't smoke, and I drink socially—maybe twice a week. My diet isn't great though. A lot of takeout and processed food."
+
+9. **Doctor**: "When was your last blood pressure or cholesterol check, and what were the results?"
+   **Patient**: "It's been a while—probably over a year. I think my cholesterol was borderline then, but I didn't follow up."
+
+10. **Doctor**: "On a scale from 1 to 10, how would you rate your stress levels in daily life?"
+    **Patient**: "I'd say 8. My job is demanding, and I've been working long hours without much downtime."""
+
+
+    # # Process the patient query
+    # print("Step 1: Preparing the patient query using hyde_query_answer.")
+    # query = hyde_query_answer(text)
+
+    print("Step 2: Passing the query to process_patient_query.")
     response = process_patient_query(
-        "I've been experiencing chest pain and shortness of breath when exercising. I'm worried about my heart."
+        text
     )
+
+    print("Step 3: Printing the medical response.")
     print(f"Medical Response: {response}")
-
-    # Example with a simulated uploaded cardiac MRI
-    mri_example = [
-        {
-            "type": "image",
-            "content": "base64_encoded_image_would_be_here",
-            "metadata": {
-                "description": "Cardiac MRI",
-                "format": "jpeg"
-            }
-        }
-    ]
-
-    response_with_mri = process_patient_query(
-        "Can you analyze this heart MRI and tell me if there are any issues?",
-        media_files=mri_example
-    )
-    print(f"Cardiologist Response: {response_with_mri}")
-
-    # Example with a simulated uploaded blood report
-    blood_report_example = [
-        {
-            "type": "text",
-            "content": "CBC Results: WBC: 7.2, RBC: 4.8, Hemoglobin: 14.2, Hematocrit: 42%, Platelets: 250\nChemistry: Sodium: 140, Potassium: 4.2, Chloride: 102, CO2: 24, BUN: 15, Creatinine: 0.9, Glucose: 95",
-            "metadata": {
-                "description": "Blood work results from lab"
-            }
-        }
-    ]
-
-    response_with_bloodwork = process_patient_query(
-        "Can you explain what these blood test results mean?",
-        media_files=blood_report_example
-    )
-    print(f"Pathologist Response: {response_with_bloodwork}")

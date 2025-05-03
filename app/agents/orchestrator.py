@@ -788,7 +788,7 @@ if __name__ == "__main__":
         print(f"\nQuery: {query}")
         result = orchestrate_agents(query)
         print(f"Selected agent type: {type(result).__name__}")
-        print(f"Response: {result['response'][:100]}...")  # Show first 100 chars
+        print(f"Response: {result['response']}")  # Show first 100 chars
         print(f"Confidence: {result['confidence']}")
         print(f"Success: {result['success']}")
 
@@ -835,7 +835,7 @@ if __name__ == "__main__":
     text_query = "What are the warning signs of a heart attack?"
     text_result = process_medical_query(text_query)
     print(f"\nText Query: {text_query}")
-    print(f"Response: {text_result['response'][:100]}...")
+    print(f"Response: {text_result['response']}")
     print(f"Confidence: {text_result['confidence']}")
     print(f"Success: {text_result['success']}")
 
@@ -843,7 +843,7 @@ if __name__ == "__main__":
     image_query = "What does this brain MRI show? Is there a tumor?"
     image_result = process_medical_query(image_query, mock_image_data)
     print(f"\nImage Query: {image_query}")
-    print(f"Response: {image_result['response'][:100]}...")
+    print(f"Response: {image_result['response']}")
     print(f"Confidence: {image_result['confidence']}")
     print(f"Success: {image_result['success']}")
 

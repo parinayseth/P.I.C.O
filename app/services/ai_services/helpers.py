@@ -1,5 +1,7 @@
 import json
 import logging
+import traceback
+
 import pandas as pd
 
 import faiss
@@ -147,13 +149,18 @@ async def extract_and_format_qna(json_data):
         return [], ""
     
     
-faiss_output = "embeddings/KnowledgeBase.faiss"
-csv_output = "embeddings/MedMCQA_Combined_DF.csv"
+faiss_output = "/Users/yashmangalik/Documents/my_projects/P.I.C.O/app/services/ai_services/embeddings/KnowledgeBase.faiss"
+csv_output = "/Users/yashmangalik/Documents/my_projects/P.I.C.O/app/services/ai_services/embeddings/MedMCQA_Combined_DF.csv"
 index_path = faiss_output
-index = faiss.read_index(index_path)
-Embeddingmodel = SentenceTransformer("hkunlp/instructor-xl")
-MedMCQA_Combined_DF = pd.read_csv(csv_output)
-index = faiss.read_index(index_path)
+try:
+    index = faiss.read_index(index_path)
+    Embeddingmodel = SentenceTransformer("hkunlp/instructor-xl")
+    MedMCQA_Combined_DF = pd.read_csv(csv_output)
+    index = faiss.read_index(index_path)
+except Exception as e:
+    traceback.print_exc()
+    print(f"An error occurred while loading the index or embedding model: {e}")
+
 
 async def query_answer(query):
     try:
