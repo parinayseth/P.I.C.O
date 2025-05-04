@@ -19,7 +19,7 @@ import uuid
 # from together import Together
 from app.core.config import LLM_PROJECT_ID,GOOGLE_APPLICATION_CREDENTIALS
 os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = GOOGLE_APPLICATION_CREDENTIALS
-from helpers import query_answer
+from app.services.ai_services.helpers import query_answer
 PROJECT_ID = LLM_PROJECT_ID
 LOCATION = "us-central1" 
 
