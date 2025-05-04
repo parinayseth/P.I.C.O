@@ -5,6 +5,7 @@ import re
 import traceback
 from vertexai.preview.generative_models import GenerativeModel, GenerationConfig
 from anthropic import AnthropicVertex
+from app.services.ai_services.gemini_services import gemini_call_flash_2
 from prompts.agents_prompts import (
     GENERAL_PHYSICIAN_PROMPT,
     CARDIOLOGIST_PROMPT,
@@ -70,7 +71,7 @@ def ai_call(system_prompt, u_prompt, call="gemini"):
         # return response.choices[0].message.content
 
 
-def general_physician_consultation(
+async def general_physician_consultation(
     patient_data, qa_responses, doc_summary=None, information=None
 ):
     """
@@ -98,8 +99,7 @@ def general_physician_consultation(
         user_prompt += physician_knowledge
 
     # Consult with general physician
-    gp_response = ai_call(GENERAL_PHYSICIAN_PROMPT, user_prompt)
-
+    gp_response, gp_status = await gemini_call_flash_2(system_prompt=GENERAL_PHYSICIAN_PROMPT, user_prompt=user_prompt)
     # Check if specialist is recommended
     specialist_match = re.search(r"[A-Z]{8,}", gp_response)
     specialist_needed = specialist_match.group(0) if specialist_match else None
@@ -107,7 +107,7 @@ def general_physician_consultation(
     return {"gp_consultation": gp_response, "specialist_needed": specialist_needed}
 
 
-def specialist_consultation(specialist_type, patient_data, gp_findings):
+async def specialist_consultation(specialist_type, patient_data, gp_findings):
     """
     Consultation with a specialist doctor.
 
@@ -143,11 +143,14 @@ def specialist_consultation(specialist_type, patient_data, gp_findings):
     General Physician's Findings:
     {gp_findings}
     """
+    result, status = await gemini_call_flash_2(
+        system_prompt=specialist_prompt,
+        user_prompt=specialist_context,
+    )
+    return result
 
-    return ai_call(specialist_prompt, specialist_context)
 
-
-def generate_medical_summary(gp_findings, specialist_findings=None):
+async def generate_medical_summary(gp_findings, specialist_findings=None):
     """
     Generate a flashcard-style summary of all medical findings.
 
@@ -174,9 +177,11 @@ def generate_medical_summary(gp_findings, specialist_findings=None):
     Specialist Findings (if applicable):
     {specialist_findings if specialist_findings else "No specialist consultation required"}
     """
-
-    return ai_call(summary_prompt, findings)
-
+    result, status = await gemini_call_flash_2(
+        system_prompt=summary_prompt,
+        user_prompt=findings,
+    )
+    return result
 
 def validate_patient_data(patient_data):
     """
@@ -229,7 +234,7 @@ def validate_qa_responses(qa_responses):
     return True, ""
 
 
-def format_consultation_results(results):
+async def format_consultation_results(results):
     """
     Format consultation results in a human-readable way.
 
@@ -258,7 +263,7 @@ def format_consultation_results(results):
     return "\n".join(formatted_output)
 
 
-def process_medical_consultation(
+async def process_medical_consultation(
     patient_data, qa_responses, doc_summary=None, information=None
 ):
     """
@@ -274,35 +279,37 @@ def process_medical_consultation(
     from app.services.ai_services.helpers import query_answer
 
     # Validate inputs
-    is_valid_patient, patient_error = validate_patient_data(patient_data)
-    if not is_valid_patient:
-        return {"error": f"Invalid patient data: {patient_error}"}
+    # is_valid_patient, patient_error = validate_patient_data(patient_data)
+    # if not is_valid_patient:
+    #     return {"error": f"Invalid patient data: {patient_error}"}
 
-    is_valid_qa, qa_error = validate_qa_responses(qa_responses)
-    if not is_valid_qa:
-        return {"error": f"Invalid Q&A responses: {qa_error}"}
+    # is_valid_qa, qa_error = validate_qa_responses(qa_responses)
+    # if not is_valid_qa:
+    #     return {"error": f"Invalid Q&A responses: {qa_error}"}
 
     try:
         # Step 1: General Physician Consultation
-        added_data = query_answer(patient_data)
+        added_data = await query_answer(patient_data)
+        if added_data is None:
+            added_data = "No additional data found."
         updated_patient_data = f"""Patient Data:
         {patient_data}
         Added Data:
         {added_data}"""
         print("Updated Patient Data: ", updated_patient_data)
-        gp_result = general_physician_consultation(updated_patient_data, qa_responses)
+        gp_result = await general_physician_consultation(updated_patient_data, qa_responses)
 
         # Step 2: Specialist Consultation if needed
         specialist_result = None
         if gp_result["specialist_needed"]:
-            specialist_result = specialist_consultation(
+            specialist_result = await specialist_consultation(
                 gp_result["specialist_needed"],
                 patient_data,
                 gp_result["gp_consultation"],
             )
 
         # Step 3: Generate Summary
-        summary = generate_medical_summary(
+        summary = await generate_medical_summary(
             gp_result["gp_consultation"], specialist_result
         )
 
@@ -314,7 +321,7 @@ def process_medical_consultation(
         }
 
         # Format the results
-        formatted_results = format_consultation_results(raw_results)
+        formatted_results = await format_consultation_results(raw_results)
 
         return {"raw": raw_results, "formatted": formatted_results}
     except Exception as e:
