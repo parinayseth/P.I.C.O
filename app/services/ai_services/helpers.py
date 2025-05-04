@@ -117,24 +117,25 @@ async def get_patient_summary(user_id, qna, doc_summary, department_selected,db_
         return "Error processing AI response", 500
 
 
-def run_consultation(patient_data, qna_responses,doc_summary, information):
+async def run_consultation(patient_data, qna_responses,doc_summary, information):
     """
     Run a mock medical consultation with realistic test data.
     """
     print("Starting medical consultation...\n")
 
     # Process the consultation
-    results = process_medical_consultation(patient_data, qna_responses,doc_summary, information)
+    results = await process_medical_consultation(patient_data, qna_responses,doc_summary, information)
 
     # Print results
-    print("\n=== Consultation Results ===\n")
-    print(results["formatted"])
-
+    logger.info(f"Consultation Results: {results}")
+    # print(results["formatted"])
+    # logger.info(f"Formatted Results: {results.get('formatted', 'No formatted results available')}")
     # Print additional details if specialist was needed
     if results["raw"]["specialist_needed"]:
         print(f"\nSpecialist Referral: {results['raw']['specialist_needed']}")
 
-    return results.get(["formatted"])
+    formatted_result = results.get("formatted",None)
+    return formatted_result
 
 async def get_patient_summary_v2(user_id, qna, doc_summary, department_selected, db_collection):
     try:
@@ -145,17 +146,24 @@ async def get_patient_summary_v2(user_id, qna, doc_summary, department_selected,
         about = "\n".join([f"Question: {question}\nAnswer: {answer}\n" for question, answer in qna.items()])
         logger.info(f"About: {about}")
         information = await query_answer([goal])
-        logger.info(f"Information: {information}")
+        # logger.info(f"Information: {information}")
+        
 
-        patient_summary = run_consultation(goal, about, doc_summary, information)
+        patient_summary = await run_consultation(goal, about, doc_summary, information)
 
-        logger.info(f"New Patient Summary: {patient_summary}")
+        updated_rag_information = await query_answer([patient_summary])
+        if not updated_rag_information:
+            updated_rag_information = information
 
         system_prompt = patient_info()
-        user_prompt = f"\nGenerate a summary diagnosis based upon these {goal}, {about}, {doc_summary}, {information}"
+        user_prompt = f"\nGenerate a summary diagnosis based upon these Patient Details \n\n Patient's Agenda = {goal} \n\n About Patient \n {about} \n\n Reference Documents Provided by Patient = \n {doc_summary}, Past Case Studies = \n {information}" if not patient_summary else f"\nGenerate a summary diagnosis based these Patient Details \n\n Patient's Agenda = {goal} \n\n About Patient \n {patient_summary} \n\n Past Case Studies = \n {updated_rag_information}"
+        
+        # logger.info(f"User Prompt: {user_prompt}")
+        
+        
         ai_response, status = await gemini_call_flash_2(system_prompt=system_prompt, user_prompt=user_prompt,
                                                         user_feedback=None, model_name="gemini-2.0-flash-001")
-        logger.info(f"AI Response: {ai_response}")
+        # logger.info(f"AI Response: {ai_response}")
 
         validation_sytem_prompt = get_validation_prompt(ai_response, goal, about, doc_summary, information)
         validation_result, status = await gemini_call_flash_2(system_prompt=validation_sytem_prompt,
@@ -225,22 +233,24 @@ async def extract_and_format_qna(json_data):
 async def query_answer(query):
     try:
         # Use the globally loaded resources
-        logger.info(f"Querying with: {query}")
-        logger.info(f"Embedding model: {resources.embedding_model}")
+        # logger.info(f"Querying with: {query}")
+        # logger.info(f"Embedding model: {resources.embedding_model}")
         
         query_embeddings_without_reshape = resources.embedding_model.encode(query)
-        logger.info(f"Query embeddings without reshape: {query_embeddings_without_reshape}")
+        # logger.info(f"Query embeddings without reshape: {query_embeddings_without_reshape}")
         
         query_embedding_base = query_embeddings_without_reshape[0]
-        logger.info(f"Query embedding base: {query_embedding_base}")
+        # logger.info(f"Query embedding base: {query_embedding_base}")
         
         query_embedding = query_embedding_base.reshape(1, -1)
-        logger.info(f"Query embedding reshaped: {query_embedding}")
+        # logger.info(f"Query embedding reshaped: {query_embedding}")
         # query_embedding = embedding_model.encode([query])[0].reshape(1, -1)
         top_k = 3
         scores, index_vals = resources.faiss_index.search(query_embedding, top_k)
         
-        return resources.med_mcqa_df['question_exp'].loc[list(index_vals[0])].to_list()
+        extracted_rag_data = resources.med_mcqa_df['question_exp'].loc[list(index_vals[0])].to_list()
+        extracted_rag_str = f"Previous Case Studies: \n {' '.join(extracted_rag_data)}"
+        return extracted_rag_str
     except Exception as e:
         logger.error(f"An error occurred while querying the answer: {e}")
         return []
