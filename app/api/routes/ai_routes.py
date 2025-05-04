@@ -9,9 +9,8 @@ from fastapi.responses import JSONResponse
 from motor.motor_asyncio import AsyncIOMotorCollection, AsyncIOMotorDatabase
 from app.db.helpers import download_documents, extract_text_from_pdf, get_doctor_details, get_visit_details
 from app.db.utils import get_collection
-from app.services.ai_services.helpers import doctor_mapping, get_followup_questions_ai, get_patient_summary
-
-
+from app.services.ai_services.helpers import doctor_mapping, get_followup_questions_ai, get_patient_summary, \
+    get_patient_summary_v2
 
 ###### LOGGING SETUP ######
 logger = logging.getLogger(__name__)
@@ -94,6 +93,50 @@ async def get_summary(request: Request,
                 return JSONResponse(content={'success': True, 'analysis': ai_response, 'visit_id': visit_id }, status_code=status_code)
             else:
                 return JSONResponse(content={'success': False, 'error': ai_response, 'visit_id': visit_id}, status_code=status_code)
+        except Exception as e:
+            return JSONResponse(content={'error': f'Error getting AI response: {e}'}, status_code=500)
+
+    except Exception as e:
+        return JSONResponse(content={'error': f'An unexpected error occurred in getting Summary: {e}'}, status_code=500)
+
+@router.post("/get_summary_v2", response_model=dict)
+async def get_summary_v2(request: Request,
+                      db_collection: AsyncIOMotorCollection = Depends(get_collection("patient_data")),
+                      ):
+    """
+    Endpoint to get a summary based on user input and uploaded document.
+    """
+    try:
+        request_data = await request.json()
+        logger.info(f"Request received: {request_data}")
+
+        user_id = request_data.get('user_id')
+        qna = request_data.get('qna')
+        doc_id = request_data.get('doc_id')
+        department_selected = request_data.get('department')
+
+        if len(doc_id) > 1:
+            try:
+                download_file_path, status_code = await download_documents(doc_id, user_id)
+                if status_code != 200:
+                    return JSONResponse(content={'success': False, 'error': download_file_path},
+                                        status_code=status_code)
+
+                pdf_text, text_status = extract_text_from_pdf(download_file_path)
+            except Exception as e:
+                return JSONResponse(content={'error': f'Error processing PDF: {e}'}, status_code=500)
+        else:
+            pdf_text = ""
+
+        try:
+            ai_response, visit_id, status_code = await get_patient_summary_v2(user_id, qna, pdf_text, department_selected,
+                                                                           db_collection)
+            if status_code == 200:
+                return JSONResponse(content={'success': True, 'analysis': ai_response, 'visit_id': visit_id},
+                                    status_code=status_code)
+            else:
+                return JSONResponse(content={'success': False, 'error': ai_response, 'visit_id': visit_id},
+                                    status_code=status_code)
         except Exception as e:
             return JSONResponse(content={'error': f'Error getting AI response: {e}'}, status_code=500)
 
