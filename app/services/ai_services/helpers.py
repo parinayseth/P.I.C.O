@@ -7,6 +7,7 @@ import faiss
 import pytz
 from sentence_transformers import SentenceTransformer
 from app.db.helpers import store_qna_response
+from app.services.ai_services.ai_agents import process_medical_consultation
 from app.services.ai_services.gemini_services import gemini_call_flash_2
 from prompts.system_prompts import followup_qna, get_validation_prompt, mapping_prompt, patient_info
 from app.services.ai_services import resources
@@ -108,6 +109,69 @@ async def get_patient_summary(user_id, qna, doc_summary, department_selected,db_
             logger.error(f"Failed to store QnA response: {store_response}")
             return "Error storing QnA response", 500
         
+        # ai_response = ""
+        return ai_response, store_response, 200
+
+    except Exception as e:
+        logger.error(f"An error occurred while processing AI response: {e}")
+        return "Error processing AI response", 500
+
+
+def run_consultation(patient_data, qna_responses,doc_summary, information):
+    """
+    Run a mock medical consultation with realistic test data.
+    """
+    print("Starting medical consultation...\n")
+
+    # Process the consultation
+    results = process_medical_consultation(patient_data, qna_responses,doc_summary, information)
+
+    # Print results
+    print("\n=== Consultation Results ===\n")
+    print(results["formatted"])
+
+    # Print additional details if specialist was needed
+    if results["raw"]["specialist_needed"]:
+        print(f"\nSpecialist Referral: {results['raw']['specialist_needed']}")
+
+    return results.get(["formatted"])
+
+async def get_patient_summary_v2(user_id, qna, doc_summary, department_selected, db_collection):
+    try:
+        # data = {"qna": qna}
+        goal = await extract_and_format_qna(qna)
+        logger.info(f"Goal: {goal}")
+
+        about = "\n".join([f"Question: {question}\nAnswer: {answer}\n" for question, answer in qna.items()])
+        logger.info(f"About: {about}")
+        information = await query_answer([goal])
+        logger.info(f"Information: {information}")
+
+        patient_summary = run_consultation(goal, about, doc_summary, information)
+
+        logger.info(f"New Patient Summary: {patient_summary}")
+
+        system_prompt = patient_info()
+        user_prompt = f"\nGenerate a summary diagnosis based upon these {goal}, {about}, {doc_summary}, {information}"
+        ai_response, status = await gemini_call_flash_2(system_prompt=system_prompt, user_prompt=user_prompt,
+                                                        user_feedback=None, model_name="gemini-2.0-flash-001")
+        logger.info(f"AI Response: {ai_response}")
+
+        validation_sytem_prompt = get_validation_prompt(ai_response, goal, about, doc_summary, information)
+        validation_result, status = await gemini_call_flash_2(system_prompt=validation_sytem_prompt,
+                                                              user_prompt=ai_response, user_feedback=None,
+                                                              model_name="gemini-2.0-flash-001")
+        logger.info(f"Validation Result: {validation_result}")
+
+        confidence_score = await extract_confidence_score(validation_result)
+        logger.info(f"Confidence Score: {confidence_score}")
+
+        store_response, status_code = await store_qna_response(user_id, qna, ai_response, confidence_score,
+                                                               department_selected, db_collection)
+        if status_code != 200:
+            logger.error(f"Failed to store QnA response: {store_response}")
+            return "Error storing QnA response", 500
+
         # ai_response = ""
         return ai_response, store_response, 200
 

@@ -290,7 +290,7 @@ from vertexai.preview.generative_models import GenerativeModel, GenerationConfig
 from anthropic import AnthropicVertex
 import uuid
 from together import Together
-os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "/Users/harshvashisht/Desktop/Project-7734/P.I.C.O/cred.json"
+os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "/Users/yashmangalik/Documents/my_projects/P.I.C.O/cred.json"
 PROJECT_ID = "propane-highway-458508-e1"  
 LOCATION = "us-central1" 
 
@@ -336,7 +336,7 @@ def ai_call(system_prompt, u_prompt, call = "gemini"):
         )
         return response.choices[0].message.content
     
-def general_physician_consultation(patient_data, qa_responses):
+def general_physician_consultation(patient_data, qa_responses,doc_summary=None, information=None):
     """
     Primary consultation with general physician who determines if a specialist is needed.
     
@@ -355,11 +355,16 @@ def general_physician_consultation(patient_data, qa_responses):
     Patient Q&A Responses:
     {qa_responses}
     """
-    
+
+    user_prompt = f"Please review this patient's information and determine if they need a specialist. If a specialist is needed, include their specialty in CAPS in your response. Patient information: {patient_context}"
+    if information:
+        physician_knowledge = f"\n\nPhysician Knowledge: {information}\n\n"
+        user_prompt += physician_knowledge
+
     # Consult with general physician
     gp_response = ai_call(
         GENERAL_PHYSICIAN_PROMPT,
-        f"Please review this patient's information and determine if they need a specialist. If a specialist is needed, include their specialty in CAPS in your response. Patient information: {patient_context}"
+        user_prompt
     )
     
     # Check if specialist is recommended
@@ -511,7 +516,7 @@ def format_consultation_results(results):
     
     return "\n".join(formatted_output)
 
-def process_medical_consultation(patient_data, qa_responses):
+def process_medical_consultation(patient_data, qa_responses,doc_summary=None, information=None):
     """
     Main function to process a complete medical consultation.
     
@@ -533,7 +538,7 @@ def process_medical_consultation(patient_data, qa_responses):
     
     try:
         # Step 1: General Physician Consultation
-        gp_result = general_physician_consultation(patient_data, qa_responses)
+        gp_result = general_physician_consultation(patient_data, qa_responses,doc_summary, information)
         
         # Step 2: Specialist Consultation if needed
         specialist_result = None
@@ -627,9 +632,10 @@ def run_mock_consultation():
     
     return results
 
+
 # Run the mock consultation if this file is executed directly
 if __name__ == "__main__":
-    run_mock_consultation()
+    print("/*"*100,"\n",run_mock_consultation(),"\n","/*"*100)
 
 
 
