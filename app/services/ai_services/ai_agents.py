@@ -19,7 +19,7 @@ import uuid
 from together import Together
 from app.core.config import LLM_PROJECT_ID,GOOGLE_APPLICATION_CREDENTIALS
 os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = GOOGLE_APPLICATION_CREDENTIALS
-
+from helpers import query_answer
 PROJECT_ID = LLM_PROJECT_ID
 LOCATION = "us-central1" 
 
@@ -267,7 +267,13 @@ def process_medical_consultation(patient_data, qa_responses,doc_summary=None, in
     
     try:
         # Step 1: General Physician Consultation
-        gp_result = general_physician_consultation(patient_data, qa_responses,doc_summary, information)
+        added_data = query_answer(patient_data)
+        updated_patient_data = f"""Patient Data:
+        {patient_data}
+        Added Data:
+        {added_data}"""
+        print("Updated Patient Data: ", updated_patient_data)
+        gp_result = general_physician_consultation(updated_patient_data, qa_responses)
         
         # Step 2: Specialist Consultation if needed
         specialist_result = None
