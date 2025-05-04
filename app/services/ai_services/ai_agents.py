@@ -16,7 +16,7 @@ from prompts.agents_prompts import (GENERAL_PHYSICIAN_PROMPT,
                                     PSYCHIATRIST_PROMPT,
                                     ORTHOPEDIST_PROMPT)
 import uuid
-from together import Together
+# from together import Together
 from app.core.config import LLM_PROJECT_ID,GOOGLE_APPLICATION_CREDENTIALS
 os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = GOOGLE_APPLICATION_CREDENTIALS
 from helpers import query_answer
@@ -41,7 +41,7 @@ def ai_call(system_prompt, u_prompt, call = "gemini"):
             traceback.print_exc()
             return "Failed Claude call"
 
-    elif call == "gemini":
+    else:
         try:
             gemini_model = GenerativeModel("gemini-2.0-flash-001", system_instruction=system_prompt)  
             response = gemini_model.generate_content(
@@ -55,15 +55,15 @@ def ai_call(system_prompt, u_prompt, call = "gemini"):
         except Exception as e:
             traceback.print_exc()
             return f"Failed Gemini call: {str(e)}"
-    else: 
+     
 
-        client = Together()
+        # client = Together()
 
-        response = client.chat.completions.create(
-            model="meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8",
-            messages=[{"role": "user", "content": "What are some fun things to do in New York?"}]
-        )
-        return response.choices[0].message.content
+        # response = client.chat.completions.create(
+        #     model="meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8",
+        #     messages=[{"role": "user", "content": "What are some fun things to do in New York?"}]
+        # )
+        # return response.choices[0].message.content
     
 def general_physician_consultation(patient_data, qa_responses,doc_summary=None, information=None):
     """
