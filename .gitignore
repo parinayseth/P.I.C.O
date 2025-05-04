@@ -1,1 +1,6 @@
 venv
+creds.json
+local.env
+KnowledgeBase.faiss
+MedMCQA_Combined_DF.csv
+cred.json

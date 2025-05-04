@@ -114,36 +114,36 @@ async def store_qna_response(user_id, qna, ai_response, validation_score, depart
         logger.error(f"Error updating MongoDB: {e}")
         return {"error": f"Error updating MongoDB: {e}"}, 500
     
+
+
+async def get_visit_details(visit_id, patient_collection):
+    try:
+        result = await patient_collection.find_one({"appointments.visit_id": visit_id})
+        
+        if result:
+            result.pop('_id', None)  # Remove the '_id' field if present
+            for appointment in result.get('appointments', []):
+                if appointment.get('visit_id') == visit_id:
+                    return appointment, 200
+            return None, 200  # No matching appointment found in the document
+        return None, 200  # No matching document found
+    except Exception as e:
+        logger.error(f"Error retrieving visit details: {e}")
+        return str(e), 500
     
-# def store_qna_response(user_id, qna, ai_response, validation_score, department_selected):
-# try:
-
-#     # Create the document to update
-#     appointment_data = {
-#         "qna": qna,
-#         "ai_response": ai_response,
-#         "validation_score": validation_score,
-#         "department_selected": department_selected
-#     }
-#     visit_id = user_id + str(uuid.uuid4())
-#     appointment = {
-#         "data": appointment_data,
-#         "timestamp": helper.get_current_timestamp(),
-#         "visit_id": visit_id,
-#     }
-
-#     result = patient_collection.update_one(
-#         {"user_id": user_id},
-#         {"$push": {"appointments": appointment}},
-#         upsert=True
-#     )
-
-#     if result.matched_count == 0:
-#         print(f"MongoDB update result: New document created")
-#     else:
-#         print(f"MongoDB update result: Appointment data updated in existing document")
-
-#     return visit_id, 200
-# except Exception as e:
-#     print(f"Error updating MongoDB: {e}")
-#     return {"error": f"Error updating MongoDB: {e}"}, 500
+    
+async def get_doctor_details(department, doctor_collection):
+    try:
+        results = await list(doctor_collection.find({"department": department}, {"_id": 0}))
+        
+        doctors_list = []
+        for result in results:
+            doctor_info = {}
+            for key, value in result.items():
+                if key != '_id':
+                    doctor_info[key] = value
+            doctors_list.append(doctor_info)
+        
+        return doctors_list, 200
+    except Exception as e:
+        return str(e), 500

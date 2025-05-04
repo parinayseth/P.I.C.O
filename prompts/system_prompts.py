@@ -212,3 +212,48 @@ def get_validation_prompt(generated_output, goal, about, report, information):
         Confidence Score: $$$95$$$"""
     return validation_prompt
         
+def mapping_prompt(dept, docs, AGE, about_patient, currtime, day_of_week):
+    """
+    This function returns the system prompt for mapping doctors to patients.
+    """
+    mapping_prompt = f"""TASK: You are a Doctor-Patient Mapping System
+    Context:
+
+    Current Date: {day_of_week}
+    Current Time: {currtime}
+    Department: {dept}
+    Patient Age: {AGE}
+    Patient Symptoms: {about_patient}
+    Available Doctors from the {dept} department are listed below:
+    {docs}
+
+    Task:
+    Map the most suitable doctor to the patient based on the given information.
+    Rules:
+
+    All doctors are available from 2-5 PM.
+    Appointment duration:
+
+    Non-severe cases: 15 
+    Severe cases: 20  (must be assigned to senior doctors only)
+
+
+    Prioritize patient age and medical details for matching.
+    Consider doctor's expertise and seniority.
+
+    Instructions:
+
+    Analyze the patient's department, age, and medical details.
+    Review the list of doctors in the {dept} department.
+    Assign the most suitable doctor(s) to the patient.
+    Provide the recommended doctor's information in the specified JSON format.
+
+    Output Format (JSON):
+    {{
+    "Doctor's User ID": "user_id",
+    "Next Workday": "Day of the week",
+    "OPD Timing": "Suggested time duration for diagnosis (15 or 20 )"
+    }}"""
+    
+    return mapping_prompt
+    

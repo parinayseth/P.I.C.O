@@ -7,9 +7,9 @@ from typing import List
 from fastapi import Depends, FastAPI, APIRouter, HTTPException, Form, File, UploadFile, Request, WebSocket, WebSocketDisconnect, BackgroundTasks
 from fastapi.responses import JSONResponse
 from motor.motor_asyncio import AsyncIOMotorCollection, AsyncIOMotorDatabase
-from app.db.helpers import download_documents, extract_text_from_pdf
+from app.db.helpers import download_documents, extract_text_from_pdf, get_doctor_details, get_visit_details
 from app.db.utils import get_collection
-from app.services.ai_services.helpers import get_followup_questions_ai, get_patient_summary
+from app.services.ai_services.helpers import doctor_mapping, get_followup_questions_ai, get_patient_summary
 
 
 
@@ -101,38 +101,65 @@ async def get_summary(request: Request,
         return JSONResponse(content={'error': f'An unexpected error occurred in getting Summary: {e}'}, status_code=500)
 
 
-# @app.route('/get_summary', methods=["POST"])
-# def get_summary():
-#     try:
-#         request_data = json.loads(request.data)
-#         print("Request received:", request_data)
-
-#         user_id = request_data.get('user_id')
-#         qna = request_data.get('qna')
-#         doc_id = request_data.get('doc_id')
-#         department_selected  = request_data.get('department')
-#         if len(doc_id) > 1:
-#             try:
-#                 download_file_path, status_code = database.download_azure_blob(doc_id, user_id)
-#                 if status_code != 200:
-#                     return jsonify({'success': False, 'error': download_file_path}), status_code
-
-#                 pdf_text = helper.extract_text_from_pdf(download_file_path)
-#                 # pdf_summary = helper.summarize_pdf_text(pdf_text)
-#             except Exception as e:
-#                 return jsonify({'error': f'Error processing PDF: {e}'}), 500
-#         else:
-#             pdf_text = ""
-
-#         try:
-#             ai_response, visit_id, status_code = helper.get_ai_response(user_id, qna, pdf_text, department_selected)
-#             if status_code == 200:
-#                 return jsonify({'success': True, 'analysis': ai_response, 'visit_id': visit_id }), status_code
-#             else:
-#                 return jsonify({'success': False, 'error': ai_response, 'visit_id': visit_id}), status_code
-#         except Exception as e:
-#             return jsonify({'error': f'Error getting AI response: {e}'}), 500
-
-#     except Exception as e:
-#         return jsonify({'error': f'An unexpected error occurred: {e}'}), 500
-
+@router.post("/map_doctor", response_model=dict)
+async def mapping_doctor(request: Request,
+                        pateint_db_collection: AsyncIOMotorCollection = Depends(get_collection("patient_data")),
+                        doctor_db_collection: AsyncIOMotorCollection = Depends(get_collection("doctor_data") ),
+                        ):
+    try:
+        request_data = await request.json()
+        logger.info(f"Request received: {request_data}")
+        
+        visit_id = request_data.get('visit_id')
+        visit_details, status_code = await get_visit_details(visit_id, pateint_db_collection)
+        
+        if status_code != 200:
+            return JSONResponse(content={'success': False, 'error': visit_details}, status_code=status_code)
+        
+        department = visit_details.get('data', {}).get('department_selected')
+        logger.info(f"Department: {department}")
+        
+        patient_age = visit_details.get('data', {}).get('qna', {}).get('What is your age and Sex?')
+        logger.info(f"Patient Age: {patient_age}")
+        
+        about_patient = visit_details.get('data', {}).get('qna', {})
+        logger.info(f"About Patient: {about_patient}")
+        
+        doctors_list, status_code = await get_doctor_details(department,doctor_db_collection)
+        logger.info(f"Doctors List: {doctors_list}")
+        
+        get_doctor = await doctor_mapping(dept=department, AGE=patient_age, about_patient= about_patient, available_doctors=doctors_list)
+        
+        logger.info(f"Doctor Mapping: {get_doctor}")
+        
+        if "Doctor's User ID" in get_doctor:
+            doctor_user_id = get_doctor["Doctor's User ID"]
+            
+            # Find the doctor details by user_id
+            mapped_doctor = None
+            for doctor in doctors_list:
+                if doctor['user_id'] == doctor_user_id:
+                    mapped_doctor = doctor
+                    break
+            
+            if mapped_doctor:
+                response = {
+                    'success': True,
+                    'patient_department': department,
+                    'doctor_mapped': {
+                        'Doctor_user_id': doctor_user_id,
+                        'Doctor_name': f"{mapped_doctor['first_name']} {mapped_doctor['last_name']}",
+                        'Doctor_email': mapped_doctor['email'],
+                        'Day of Appointment': get_doctor.get('Next Workday', 'Not specified'),
+                        'Appointment Duration': get_doctor.get('OPD Timing', 'Not specified')
+                    }
+                }
+                return JSONResponse(content=response, status_code=status_code)
+            else:
+                return JSONResponse(content={'success': False, 'error': f"Doctor with user_id {doctor_user_id} not found"}, status_code=404)
+        else:
+            return JSONResponse(content={'success': False, 'error': "Doctor's User ID not found in mapping result"}, status_code=400)
+    except Exception as e:
+        logger.error(f"Error in mapping doctor: {e}")
+        return JSONResponse(content={"error": str(e)}, status_code=500)
+        
