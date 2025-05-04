@@ -249,7 +249,12 @@ async def query_answer(query):
         scores, index_vals = resources.faiss_index.search(query_embedding, top_k)
         
         extracted_rag_data = resources.med_mcqa_df['question_exp'].loc[list(index_vals[0])].to_list()
-        extracted_rag_str = f"Previous Case Studies: \n {' '.join(extracted_rag_data)}"
+
+        # Join them into a single string with a header
+        extracted_rag_str = f"Previous Case Studies:\n{' '.join(extracted_rag_data)}"
+        
+        logger.info(f"For query '{query}', \n retrieved {extracted_rag_str} documents \n\n")
+        
         return extracted_rag_str
     except Exception as e:
         logger.error(f"An error occurred while querying the answer: {e}")
