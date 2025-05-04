@@ -115,6 +115,24 @@ async def get_patient_summary(user_id, qna, doc_summary, department_selected,db_
         logger.error(f"An error occurred while processing AI response: {e}")
         return "Error processing AI response", 500
 
+async def get_patient_summary_rag(qna):
+    try:
+        data = {"qna": qna}
+        goal = await extract_and_format_qna(qna)
+        logger.info(f"Goal: {goal}")
+        # information = "Relevant documents from the Vector database including previous case studies and medical guidelines on hypertension and headaches"  # TODO: Adding Vector DB Function
+        about = "\n".join([f"Question: {question}\nAnswer: {answer}\n" for question, answer in qna.items()])
+        logger.info(f"About: {about}")
+        information = await query_answer([goal])
+        logger.info(f"Information: {information}")
+
+        # ai_response = ""
+        return information, 200
+
+    except Exception as e:
+        logger.error(f"An error occurred while processing AI response: {e}")
+        return "Error processing AI response", 500
+
 
 async def extract_confidence_score(validation_result):
     try:

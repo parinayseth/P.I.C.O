@@ -17,6 +17,7 @@ from anthropic import AnthropicVertex
 from langgraph.graph import MessagesState, StateGraph, END
 from langgraph.checkpoint.memory import MemorySaver
 from app.core.config import LLM_PROJECT_ID,LLM_REGION,LLM_MODEL,GOOGLE_APPLICATION_CREDENTIALS
+from app.services.ai_services.helpers import query_answer, hyde_query_answer, get_patient_summary_rag
 
 os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = GOOGLE_APPLICATION_CREDENTIALS
 # Initialize AnthropicVertex client
@@ -651,11 +652,27 @@ def multi_tool_orchestration_agent(query: str, media_files: list = None) -> str:
     """
     # Prepare image content if available
     multimodal_content = []
+    ### Add RAG
+    # updated_query = query_answer(query) # returns list of 3 [a,b,c]
+    updated_query = get_patient_summary_rag(query)
+    case_study = f"""Patient query: {query}
+    Relevant Info 1: {updated_query[0]}
+    Relevant Info 2: {updated_query[1]}
+    Relevant Info 3: {updated_query[2]}
+
+    <ExpectedOutcome>
+    - Read the query and its relevant context and provide a detailed analysis.
+    - If the query is related to a medical image, provide a detailed analysis of the image.
+    As a Medical AI, You are supposed to analyze the situation of the Patient and find the pattern of symptoms. This shall help the Doctor to understand the Patient's condition promptly and would not take much time.
+    </ExpectedOutcome>
+"""
+
+    # hyde_query = hyde_query_answer(query) # needs testing
 
     # Add text as the first content item
     multimodal_content.append({
         "type": "text",
-        "text": f"Patient query: {query}"
+        "text": f"Patient query: {case_study}"
     })
 
     # Add image content if available
@@ -681,7 +698,7 @@ def multi_tool_orchestration_agent(query: str, media_files: list = None) -> str:
     # Track all tool results to synthesize later
     all_tool_results = []
     tool_use_count = 0
-    max_tool_calls = 5  # Limit number of tool calls to prevent infinite loops
+    max_tool_calls = 7  # Limit number of tool calls to prevent infinite loops
 
     # Tool calling loop
     while tool_use_count < max_tool_calls:
@@ -689,7 +706,7 @@ def multi_tool_orchestration_agent(query: str, media_files: list = None) -> str:
             model=LLM_MODEL,
             system=MULTI_TOOL_SYSTEM_PROMPT,
             max_tokens=8192,
-            temperature=0,
+            temperature=0.8,
             messages=messages,
             tools=specialist_tools,
             tool_choice={"type":"auto"},
@@ -797,7 +814,7 @@ def multi_tool_orchestration_agent(query: str, media_files: list = None) -> str:
         final_response = model.messages.create(
             model=LLM_MODEL,
             max_tokens=8192,
-            temperature=0,
+            temperature=0.7,
             messages=messages,
             stream=False
         ).content[0].text
@@ -854,7 +871,7 @@ def analyze_mri_with_query(query: str, image_data) -> str:
 #             }
 #         }
 #     ]
-#
+
 #     response_with_mri = multi_tool_orchestration_agent(
 #         "I've been experiencing chest pain and shortness of breath when exercising. Can you analyze this heart MRI?",
 #         mri_example
