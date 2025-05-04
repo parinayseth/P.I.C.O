@@ -296,7 +296,7 @@ async def hyde_query_answer(query):
         
         if status != 200 or not hypothetical_doc:
             logger.warning("Failed to generate hypothetical document, falling back to original query")
-            return await query_answer(query)
+            return await query_answer([query])
         
         # Step 2: Embed the hypothetical document instead of the original query
         hypothetical_embedding = resources.embedding_model.encode([hypothetical_doc])
@@ -315,7 +315,7 @@ async def hyde_query_answer(query):
     except Exception as e:
         logger.error(f"An error occurred in hyde_query_answer: {e}")
         logger.info("Falling back to standard query_answer method")
-        return await query_answer(query)
+        return await query_answer([query])
 
 # Updated get_patient_summary function that uses hyde_query_answer
 async def get_patient_summary_with_hyde(user_id, qna, doc_summary, department_selected, db_collection, use_hyde=True):

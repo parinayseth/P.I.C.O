@@ -289,7 +289,7 @@ async def process_medical_consultation(
 
     try:
         # Step 1: General Physician Consultation
-        added_data = await query_answer(patient_data)
+        added_data = await query_answer([patient_data])
         if added_data is None:
             added_data = "No additional data found."
         updated_patient_data = f"""Patient Data:
