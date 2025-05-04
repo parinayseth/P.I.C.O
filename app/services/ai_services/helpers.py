@@ -1,12 +1,15 @@
+import datetime
 import json
 import logging
 import pandas as pd
 
 import faiss
+import pytz
 from sentence_transformers import SentenceTransformer
 from app.db.helpers import store_qna_response
 from app.services.ai_services.gemini_services import gemini_call_flash_2
-from prompts.system_prompts import followup_qna, get_validation_prompt, patient_info
+from prompts.system_prompts import followup_qna, get_validation_prompt, mapping_prompt, patient_info
+from app.services.ai_services import resources
 
 
 logger = logging.getLogger(__name__)
@@ -147,25 +150,35 @@ async def extract_and_format_qna(json_data):
         return [], ""
     
     
-faiss_output = "embeddings/KnowledgeBase.faiss"
-csv_output = "embeddings/MedMCQA_Combined_DF.csv"
-index_path = faiss_output
-index = faiss.read_index(index_path)
-Embeddingmodel = SentenceTransformer("hkunlp/instructor-xl")
-MedMCQA_Combined_DF = pd.read_csv(csv_output)
-index = faiss.read_index(index_path)
+# faiss_output = "embeddings/KnowledgeBase.faiss"
+# csv_output = "embeddings/MedMCQA_Combined_DF.csv"
+# index_path = faiss_output
+# index = faiss.read_index(index_path)
+# Embeddingmodel = SentenceTransformer("hkunlp/instructor-xl")
+# MedMCQA_Combined_DF = pd.read_csv(csv_output)
+# index = faiss.read_index(index_path)
 
 async def query_answer(query):
     try:
-        global Embeddingmodel, MedMCQA_Combined_DF
-
-        query_embedding = Embeddingmodel.encode(query)
+        # Use the globally loaded resources
+        logger.info(f"Querying with: {query}")
+        logger.info(f"Embedding model: {resources.embedding_model}")
+        
+        query_embeddings_without_reshape = resources.embedding_model.encode(query)
+        logger.info(f"Query embeddings without reshape: {query_embeddings_without_reshape}")
+        
+        query_embedding_base = query_embeddings_without_reshape[0]
+        logger.info(f"Query embedding base: {query_embedding_base}")
+        
+        query_embedding = query_embedding_base.reshape(1, -1)
+        logger.info(f"Query embedding reshaped: {query_embedding}")
+        # query_embedding = embedding_model.encode([query])[0].reshape(1, -1)
         top_k = 3
-        scores, index_vals = index.search(query_embedding, top_k)
-
-        return MedMCQA_Combined_DF['question_exp'].loc[list(index_vals[0])].to_list()
+        scores, index_vals = resources.faiss_index.search(query_embedding, top_k)
+        
+        return resources.med_mcqa_df['question_exp'].loc[list(index_vals[0])].to_list()
     except Exception as e:
-        print(f"An error occurred while querying the answer: {e}")
+        logger.error(f"An error occurred while querying the answer: {e}")
         return []
     
 async def hyde_query_answer(query):
@@ -183,7 +196,6 @@ async def hyde_query_answer(query):
         list: Retrieved documents from the knowledge base
     """
     try:
-        global Embeddingmodel, MedMCQA_Combined_DF, index
         
         # Step 1: Generate a hypothetical document using Gemini
         system_prompt = """You are a medical professional tasked with creating a detailed response that would answer the following medical query. 
@@ -208,14 +220,14 @@ async def hyde_query_answer(query):
             return await query_answer(query)
         
         # Step 2: Embed the hypothetical document instead of the original query
-        hypothetical_embedding = Embeddingmodel.encode([hypothetical_doc])
+        hypothetical_embedding = resources.embedding_model.encode([hypothetical_doc])
         
         # Step 3: Retrieve relevant documents using the hypothetical embedding
         top_k = 5 
-        scores, index_vals = index.search(hypothetical_embedding, top_k)
+        scores, index_vals = resources.faiss_index.search(hypothetical_embedding, top_k)
         
         # Step 4: Filter results to return most relevant
-        retrieved_docs = MedMCQA_Combined_DF['question_exp'].loc[list(index_vals[0])].to_list()
+        retrieved_docs = resources.med_mcqa_df['question_exp'].loc[list(index_vals[0])].to_list()
         
         logger.info(f"HyDE RAG retrieved {len(retrieved_docs)} documents")
         
@@ -283,6 +295,57 @@ async def get_patient_summary_with_hyde(user_id, qna, doc_summary, department_se
         return ai_response, store_response, 200
 
     except Exception as e:
-        logger.error(f"An error occurred while processing AI response: {e}")
-        return "Error processing AI response", 500
+        print(f"An error occurred while querying the answer: {e}")
+        return []
     
+    
+async def doctor_mapping(dept, AGE, about_patient, available_doctors):
+    """
+    Implements the Doctor Mapping system.
+    This method:
+    1. Takes in patient details and available doctors
+    2. Maps the most suitable doctor to the patient based on the given information
+    3. Returns the recommended doctor's information in JSON format
+    
+    Args:
+        dept (str): Department of the patient
+        AGE (int): Age of the patient
+        about_patient (str): Symptoms of the patient
+        available_doctors (list): List of available doctors
+    
+    Returns:
+        dict: Recommended doctor's information in JSON format
+    """
+    try:
+        today = datetime.date.today()
+        day_of_week = today.strftime("%A")
+        utc_time = datetime.datetime.utcnow()
+        india_time_zone = pytz.timezone('Asia/Kolkata')
+        local_time = utc_time.astimezone(india_time_zone)
+        currtime = local_time.strftime("%I:%M %p")
+        docs = ""
+        for doctor in available_doctors:
+            docs += f"user_id: {doctor['user_id']}, Designation: {doctor['department']}, working_days: {doctor['working_days']} appointments_bookend: {doctor['appointments']}" + "\n"
+            
+
+        for doctor in available_doctors:
+            docs += f"user_id: {doctor['user_id']}, Designation: {doctor['department']}, working_days: {doctor['working_days']} appointments_bookend: {doctor['appointments']}" + "\n"
+            
+        system_mapping_prompt = mapping_prompt(dept, docs, AGE, about_patient, currtime, day_of_week)
+        
+        combined = f"\nMap an OPD session for this {dept}, {AGE}, {about_patient}, \n{docs}"
+
+        ai_response, status = await gemini_call_flash_2(system_prompt=system_mapping_prompt, user_prompt=combined, user_feedback=None, model_name="gemini-2.0-flash-001")
+        
+        extracted_response = await extract_response_from_delimeters(ai_response, extraction_key="json")
+        if extracted_response is None:
+            logger.error("Failed to extract JSON response from Gemini API.")
+            return "Error extracting JSON response", 500
+        
+        extracted_json = json.loads(extracted_response)
+        logger.info(f"Formatted doctor mapping response: {extracted_json}")
+        return extracted_json, 200
+
+    except Exception as e:
+        logger.error(f"An error occurred while processing the doctor mapping: {e}")
+        return {"error": "Error processing the doctor mapping"}, 500
