@@ -88,7 +88,7 @@ async def get_summary(request: Request,
             pdf_text = ""
 
         try:
-            ai_response, visit_id, status_code = await get_patient_summary(user_id, qna, pdf_text, department_selected, db_collection)
+            ai_response, visit_id, status_code = await get_patient_summary_v2(user_id, qna, pdf_text, department_selected, db_collection)
             if status_code == 200:
                 return JSONResponse(content={'success': True, 'analysis': ai_response, 'visit_id': visit_id }, status_code=status_code)
             else:
